@@ -166,3 +166,44 @@ bash scripts/change_password.sh lab.student+ropg@domain.com 'NewPassw0rd!2025'
 - Налаштував Resource Owner Password Grant і отримав повний набір токенів (access + refresh).
 - Налаштував сценарій оновлення токена без повторного введення пароля.
 - Для бонусу реалізував зміну пароля через Management API, використовуючи той самий client_credentials токен, що й у ЛР2.
+
+# Лабораторна робота №4. Інтеграція Auth0 у приклад token_auth
+
+За вимогою ЛР4 я взяв демо-проєкт з репозиторію [auth_examples/token_auth](auth_examples/token_auth) і переробив його, щоб замість локального масиву користувачів він використовував Auth0 Resource Owner Password Grant.
+
+## Основні зміни
+
+1. **Бекенд (`index.js`):**
+  - Підтягую налаштування Auth0 з env (`AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `AUTH0_AUDIENCE`, `AUTH0_SCOPE`).
+  - При POST `/api/login` звертаюся до `https://<domain>/oauth/token`, отримую `access_token`/`refresh_token`, після чого викликаю `https://<domain>/userinfo`, щоб дістати профіль користувача.
+  - У сесії зберігаю дані профілю та токени, а в JSON-відповіді повертаю `username`, `token` (внутрішній sessionId) і `auth0Tokens`.
+2. **Фронтенд (`index.html`):**
+  - Додав блок із `pre`, у якому після логіну показуються справжні `access_token`, `refresh_token`, `token_type`, `expires_in` з Auth0.
+  - Залишив існуючий механізм sessionStorage, щоб сторінка могла повторно звернутися до бекенду з session token.
+3. **`package.json`:**
+  - Створив файл залежностей для `token_auth`, щоб можна було виконати `npm install` (Express, Axios, uuid, body-parser, on-finished).
+
+## Як запустити перероблений застосунок
+
+```bash
+cd auth_examples/token_auth
+npm install
+
+export AUTH0_DOMAIN="dev-qpb2xt3kxhpqx4fk.us.auth0.com"
+export AUTH0_CLIENT_ID="I2sHGI0LvIApEjOMT0LZhFb7R7T1v19vH"
+export AUTH0_CLIENT_SECRET="Y6IRq8WpmGx7bLr-GGfzx1njQjxBZjphgfyQEFtyruyprB9mHzwsjFMh9qidN_dh"
+export AUTH0_AUDIENCE="https://dev-qpb2xt3kxhpqx4fk.us.auth0.com/api/v2/"
+export AUTH0_SCOPE="openid profile email offline_access"
+
+npm start
+```
+
+Після запуску відкриваю `http://localhost:3000`, вводжу пошту/пароль користувача з Auth0 Database connection (наприклад, `lab.student+ropg@domain.com / Passw0rd!2025`). Якщо логін успішний, у нижньому блоці відображається JSON з Auth0 токенами, які можна використовувати в подальших завданнях.
+
+## Налаштування в Auth0
+
+- У застосунку `LR2 M2M` увімкнено **Password** grant type.
+- Database connection *Username-Password-Authentication* дозволено для цього застосунку.
+- У **Auth0 Management API** для застосунку видано scope `create:users`, `read:users`, `update:users`, `delete:users`, щоб client_credentials токен можна було використати в попередніх лабораторних і для зміни пароля.
+
+Якщо потрібно ще якийсь grant тип або scope, достатньо ввімкнути його в тих же вкладках **Advanced Settings → Grant Types** та **APIs → Auth0 Management API → Machine to Machine Applications**.
