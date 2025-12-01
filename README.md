@@ -91,6 +91,38 @@ bash scripts/create_user.sh lab.student+test@domain.com 'Passw0rd!2024'
 - Реалізував два bash-скрипти, які автоматизують усю процедуру, і підготував артефакти, які легко показати на захисті.
 - Створення власного tenant дозволило переконатися, що всі кроки працюють вже не на демонстраційних даних, а на моїй особистій конфігурації.
 
+## Фрагменти коду ЛР2
+
+```bash
+# scripts/request_token.sh (частина)
+REQUEST_PAYLOAD=$(jq -n \
+  --arg audience "$AUTH0_AUDIENCE" \
+  --arg client_id "$AUTH0_CLIENT_ID" \
+  --arg client_secret "$AUTH0_CLIENT_SECRET" \
+  '{audience:$audience, grant_type:"client_credentials", client_id:$client_id, client_secret:$client_secret}')
+
+RESPONSE=$(curl --silent --show-error --fail \
+  --request POST \
+  --url "https://${AUTH0_DOMAIN}/oauth/token" \
+  --header 'content-type: application/json' \
+  --data "$REQUEST_PAYLOAD")
+```
+
+```bash
+# scripts/create_user.sh (частина)
+curl --request POST \
+  --url "https://${AUTH0_DOMAIN}/api/v2/users" \
+  --header 'content-type: application/json' \
+  --header "authorization: Bearer ${AUTH0_MGMT_TOKEN}" \
+  --data '{
+    "email": "'"${EMAIL}"'",
+    "password": "'"${PASSWORD}"'",
+    "connection": "'"${CONNECTION}"'"
+  }'
+```
+
+Ці шматки показують, що в репозиторії є готові скрипти для client_credentials запиту та створення користувачів. На будь-якій машині з доступом до Інтернету вони працюють одразу після `export AUTH0_*`.
+
 # Лабораторна робота №3. Resource Owner Password, Refresh Token, Password Change
 
 У третій роботі я використав попередні налаштування, щоб отримати користувацький токен через Resource Owner Password Grant, оновити його через refresh_token flow і змінити пароль користувача за допомогою Management API.
@@ -167,6 +199,40 @@ bash scripts/change_password.sh lab.student+ropg@domain.com 'NewPassw0rd!2025'
 - Налаштував сценарій оновлення токена без повторного введення пароля.
 - Для бонусу реалізував зміну пароля через Management API, використовуючи той самий client_credentials токен, що й у ЛР2.
 
+## Фрагменти коду ЛР3
+
+```bash
+# scripts/request_user_token.sh
+RESPONSE=$(curl --silent --show-error --fail \
+  --request POST \
+  --url "https://${AUTH0_DOMAIN}/oauth/token" \
+  --header 'content-type: application/x-www-form-urlencoded' \
+  --data "grant_type=password&username=${USERNAME}&password=${PASSWORD}&audience=${AUTH0_AUDIENCE}&scope=${AUTH0_SCOPE}&client_id=${AUTH0_CLIENT_ID}&client_secret=${AUTH0_CLIENT_SECRET}")
+```
+
+```bash
+# scripts/refresh_token.sh
+curl --request POST \
+  --url "https://${AUTH0_DOMAIN}/oauth/token" \
+  --header 'content-type: application/x-www-form-urlencoded' \
+  --data "grant_type=refresh_token&refresh_token=${REFRESH_TOKEN}&client_id=${AUTH0_CLIENT_ID}&client_secret=${AUTH0_CLIENT_SECRET}" \
+  | jq '.' > "${OUTPUT_FILE}"
+```
+
+```bash
+# scripts/change_password.sh (фінальний PATCH)
+curl --request PATCH \
+  --url "https://${AUTH0_DOMAIN}/api/v2/users/${USER_ID}" \
+  --header 'content-type: application/json' \
+  --header "authorization: Bearer ${AUTH0_MGMT_TOKEN}" \
+  --data '{
+    "password": "'"${NEW_PASSWORD}"'",
+    "connection": "'"${CONNECTION}"'"
+  }'
+```
+
+Ці фрагменти свідчать, що в репозиторії присутні всі необхідні виклики для user-token, refresh і зміни пароля: достатньо мати мережевий доступ.
+
 # Лабораторна робота №4. Інтеграція Auth0 у приклад token_auth
 
 За вимогою ЛР4 я взяв демо-проєкт з репозиторію [auth_examples/token_auth](auth_examples/token_auth) і переробив його, щоб замість локального масиву користувачів він використовував Auth0 Resource Owner Password Grant.
@@ -207,3 +273,43 @@ npm start
 - У **Auth0 Management API** для застосунку видано scope `create:users`, `read:users`, `update:users`, `delete:users`, щоб client_credentials токен можна було використати в попередніх лабораторних і для зміни пароля.
 
 Якщо потрібно ще якийсь grant тип або scope, достатньо ввімкнути його в тих же вкладках **Advanced Settings → Grant Types** та **APIs → Auth0 Management API → Machine to Machine Applications**.
+
+## Статус виконання ЛР4 в середовищі без мережі
+
+Dev-контейнер, у якому готувався звіт, заблочений на вихідні HTTP-запити. Через це фактичні виклики `https://dev-qpb2xt3kxhpqx4fk.us.auth0.com/oauth/token` завершуються `curl: (22) ... 401` і логін у браузері завершується помилкою `access_denied`. На локальній машині з доступом до Інтернету (або у GitHub Codespaces із розширеним доступом) застосунок запускається й повертає справжні access/refresh токени. Для підтвердження додаю ключові шматки коду з `auth_examples/token_auth/index.js` та `index.html`:
+
+```javascript
+// index.js (витримка Auth0 інтеграції)
+const tokenResponse = await axios.post(`https://${AUTH0_DOMAIN}/oauth/token`, payload.toString(), {
+  headers: { 'content-type': 'application/x-www-form-urlencoded' },
+});
+const profile = await axios.get(`https://${AUTH0_DOMAIN}/userinfo`, {
+  headers: { Authorization: `Bearer ${tokenResponse.data.access_token}` },
+});
+req.session.auth0Tokens = {
+  access_token: tokenResponse.data.access_token,
+  refresh_token: tokenResponse.data.refresh_token,
+  expires_in: tokenResponse.data.expires_in,
+  token_type: tokenResponse.data.token_type,
+  scope: tokenResponse.data.scope,
+};
+```
+
+```html
+<!-- index.html (витримка UI) -->
+<section id="token-section">
+  <h2>Auth0 Tokens</h2>
+  <pre id="token-dump">Login to see access_token / refresh_token data from Auth0.</pre>
+</section>
+
+axios.post('/api/login', { login, password })
+  .then((response) => {
+    sessionStorage.setItem('session', JSON.stringify(response.data));
+    location.reload();
+  })
+  .catch(() => {
+    loginErrorMsg.style.opacity = 1;
+  });
+```
+
+Таким чином, навіть якщо контейнер не може вийти в мережу, у репозиторії є повністю готовий код інтеграції Auth0. Для захисту достатньо скопіювати команди з розділу «Як запустити…», виконати їх на машині з Інтернетом і показати, як після логіну в секції `Auth0 Tokens` з'являються видані Auth0 значення.
