@@ -90,3 +90,79 @@ bash scripts/create_user.sh lab.student+test@domain.com 'Passw0rd!2024'
 - Я на практиці освоїв client_credentials flow в Auth0, навчився отримувати Management API токен та використовувати його для адміністрування користувачів.
 - Реалізував два bash-скрипти, які автоматизують усю процедуру, і підготував артефакти, які легко показати на захисті.
 - Створення власного tenant дозволило переконатися, що всі кроки працюють вже не на демонстраційних даних, а на моїй особистій конфігурації.
+
+# Лабораторна робота №3. Resource Owner Password, Refresh Token, Password Change
+
+У третій роботі я використав попередні налаштування, щоб отримати користувацький токен через Resource Owner Password Grant, оновити його через refresh_token flow і змінити пароль користувача за допомогою Management API.
+
+## Підготовка
+
+- У застосунку Auth0 в розділі **Applications → <мій застосунок> → Settings → Advanced Settings → Grant Types** увімкнув `Password` (Resource Owner Password Grant). Без цього Auth0 повертає `Grant type not allowed`.
+- Для отримання refresh токена додав `offline_access` у scope.
+- Створив окрему пару облікових даних користувача: `lab.student+ropg@domain.com` з паролем `Passw0rd!2025` (можна використати користувача з ЛР2).
+
+## Скрипти для ЛР3
+
+- `scripts/request_user_token.sh` — виконує Resource Owner Password Grant і записує результат у `artifacts/user_token.json`.
+- `scripts/refresh_token.sh` — бере refresh_token з попереднього файлу (або з аргументу) і оновлює доступ.
+- `scripts/change_password.sh` — знаходить user_id за email та міняє пароль через Management API (для бонусного завдання).
+
+Всі скрипти підтримують ті ж змінні середовища `AUTH0_*`, що й у ЛР2.
+
+## Крок 1. Отримання user token
+
+```bash
+export AUTH0_DOMAIN="dev-qpb2xt3kxhpqx4fk.us.auth0.com"
+export AUTH0_CLIENT_ID="I2sHGI0LvIApEjOMT0LZhFb7R7T1v19vH"
+export AUTH0_CLIENT_SECRET="Y6Irq8WpmGx7bLr-GGfzx1nJQjxBZjphgfyQEFtyruyprB9mHzwsjFMh9qidN_dh"
+export AUTH0_AUDIENCE="https://dev-qpb2xt3kxhpqx4fk.us.auth0.com/api/v2/"
+export AUTH0_SCOPE="openid profile email offline_access"
+bash scripts/request_user_token.sh lab.student+ropg@domain.com 'Passw0rd!2025'
+```
+
+Приклад відповіді (`artifacts/user_token.json`):
+
+```json
+{
+  "access_token": "eyJhbGciOi...user...",
+  "refresh_token": "dolGdU...",
+  "expires_in": 86400,
+  "token_type": "Bearer",
+  "scope": "openid profile email offline_access"
+}
+```
+
+## Крок 2. Оновлення токена через refresh_token
+
+```bash
+bash scripts/refresh_token.sh   # читає refresh_token з artifacts/user_token.json
+# або явно
+bash scripts/refresh_token.sh "<refresh_token>"
+```
+
+В `artifacts/refresh_token.json` зберігається новий `access_token`. Якщо Auth0 повертає `invalid_grant`, я перевіряю, чи включено `offline_access` у scope.
+
+## Крок 3. Зміна пароля (додаткове завдання)
+
+```bash
+# Потрібен Management API токен з client_credentials (scripts/request_token.sh)
+export AUTH0_MGMT_TOKEN="$(jq -r '.access_token' artifacts/token.json)"
+bash scripts/change_password.sh lab.student+ropg@domain.com 'NewPassw0rd!2025'
+```
+
+Скрипт робить два виклики: спершу `GET /api/v2/users-by-email`, далі `PATCH /api/v2/users/{id}` з тілом:
+
+```json
+{
+  "password": "NewPassw0rd!2025",
+  "connection": "Username-Password-Authentication"
+}
+```
+
+Результат лежить у `artifacts/password_change.json` і підтверджує успішний запит. Якщо потрібно повернути старий пароль, можна повторити команду з іншим значенням.
+
+## Підсумки по ЛР3
+
+- Налаштував Resource Owner Password Grant і отримав повний набір токенів (access + refresh).
+- Налаштував сценарій оновлення токена без повторного введення пароля.
+- Для бонусу реалізував зміну пароля через Management API, використовуючи той самий client_credentials токен, що й у ЛР2.
