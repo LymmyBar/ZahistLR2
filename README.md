@@ -8,7 +8,7 @@
 |---------------------|-------------------------------------------------------------------------|
 | Auth0 Domain        | `dev-qpb2xt3kxhpqx4fk.us.auth0.com`                                    |
 | Client ID           | `I2sHGI0LvIApEjOMT0LZhFb7R7T1v19vH`                                    |
-| Client Secret       | `Y6Irq8WpmGx7bLr-GGfzx1nJQjxBZjphgfyQEFtyruyprB9mHzwsjFMh9qidN_dh`    |
+| Client Secret       | `Y6IRq8WpmGx7bLr-GGfzx1njQjxBZjphgfyQEFtyruyprB9mHzwsjFMh9qidN_dh`    |
 | Audience            | `https://dev-qpb2xt3kxhpqx4fk.us.auth0.com/api/v2/`                   |
 | Інструменти         | Linux shell, `curl`, `jq`, Bash 5                                      |
 
@@ -114,7 +114,7 @@ bash scripts/create_user.sh lab.student+test@domain.com 'Passw0rd!2024'
 ```bash
 export AUTH0_DOMAIN="dev-qpb2xt3kxhpqx4fk.us.auth0.com"
 export AUTH0_CLIENT_ID="I2sHGI0LvIApEjOMT0LZhFb7R7T1v19vH"
-export AUTH0_CLIENT_SECRET="Y6Irq8WpmGx7bLr-GGfzx1nJQjxBZjphgfyQEFtyruyprB9mHzwsjFMh9qidN_dh"
+export AUTH0_CLIENT_SECRET="Y6IRq8WpmGx7bLr-GGfzx1njQjxBZjphgfyQEFtyruyprB9mHzwsjFMh9qidN_dh"
 export AUTH0_AUDIENCE="https://dev-qpb2xt3kxhpqx4fk.us.auth0.com/api/v2/"
 export AUTH0_SCOPE="openid profile email offline_access"
 bash scripts/request_user_token.sh lab.student+ropg@domain.com 'Passw0rd!2025'

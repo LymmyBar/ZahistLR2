@@ -14,7 +14,7 @@ REFRESH_TOKEN=${1:-}
 OUTPUT_FILE=${2:-"artifacts/refresh_token.json"}
 AUTH0_DOMAIN=${AUTH0_DOMAIN:-"dev-qpb2xt3kxhpqx4fk.us.auth0.com"}
 AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID:-"I2sHGI0LvIApEjOMT0LZhFb7R7T1v19vH"}
-AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET:-"Y6Irq8WpmGx7bLr-GGfzx1nJQjxBZjphgfyQEFtyruyprB9mHzwsjFMh9qidN_dh"}
+AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET:-"Y6IRq8WpmGx7bLr-GGfzx1njQjxBZjphgfyQEFtyruyprB9mHzwsjFMh9qidN_dh"}
 AUTH0_AUDIENCE=${AUTH0_AUDIENCE:-"https://dev-qpb2xt3kxhpqx4fk.us.auth0.com/api/v2/"}
 TOKEN_SOURCE="artifacts/user_token.json"
 
