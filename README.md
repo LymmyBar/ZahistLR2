@@ -363,3 +363,59 @@ app.post('/api/refresh', async (req, res) => {
 - `artifacts/password_change.json` — Management API підтверджує зміну пароля через скрипт з ЛР3.
 - `auth_examples/token_auth/index.js`/`index.html` — містять повний код інтеграції Password Grant + user creation + refresh логіки.
 - Скріншоти з Auth0 Dashboard (надаю під час захисту) демонструють увімкнений Password Grant та дозволений Database connection.
+
+# Лабораторна робота №5. Перевірка підпису JWT
+
+У ЛР5 я розширив демо з ЛР4, додавши перевірку підпису access token через публічний ключ Auth0. Для RS256 ключ доступний за `https://dev-qpb2xt3kxhpqx4fk.us.auth0.com/pem`, його завантажує бекенд і кешує.
+
+## Що реалізовано
+
+- Додано залежність `jsonwebtoken` та логіку в `auth_examples/token_auth/index.js`, яка після логіну/refresh автоматично перевіряє підпис access_token і зберігає деталі (header/payload/expiry) у сесії.
+- Новий маршрут `POST /api/verify` повторно перевіряє токен за вимогою, що дозволяє показати процес прямо під час захисту.
+- На фронтенді (`index.html`) з'явилась секція **JWT Signature** з кнопкою **Verify signature** та JSON-виводом результату.
+
+## Ключові фрагменти коду
+
+```javascript
+// index.js: завантаження pem і валідація токена
+const pemUrl = `https://${AUTH0_DOMAIN}/pem`;
+const response = await axios.get(pemUrl);
+const payload = jwt.verify(token, response.data, {
+  algorithms: ['RS256'],
+  audience: AUTH0_AUDIENCE,
+  issuer: `https://${AUTH0_DOMAIN}/`,
+});
+```
+
+```javascript
+// index.js: ручна перевірка через новий endpoint
+app.post('/api/verify', async (req, res) => {
+  const verification = await verifyAccessToken(req.session.auth0Tokens.access_token);
+  req.session.jwtVerification = verification;
+  return res.status(verification.valid ? 200 : 400).json({ jwtVerification: verification });
+});
+```
+
+```html
+<!-- index.html: секція для відображення статусу -->
+<section id="jwt-section">
+  <div class="token-header">
+    <h2>JWT Signature</h2>
+    <button id="verify-jwt-btn" type="button">Verify signature</button>
+  </div>
+  <pre id="jwt-dump">Login to verify token signature.</pre>
+</section>
+```
+
+## Як продемонструвати ЛР5
+
+1. Запусти застосунок як у ЛР4 (`npm start` з потрібними `AUTH0_*`).
+2. Залогінься користувачем з Auth0 Database connection — у секції **JWT Signature** з'явиться JSON із результатом перевірки (valid, header, payload, iat/exp).
+3. Натисни **Verify signature**: бекенд звернеться до `/pem`, перевірить підпис ще раз і оновить секцію.
+4. Для демонстрації обробки refresh натисни **Refresh token now** — після отримання нового access_token у секції з'являться нові значення `exp`.
+
+## Докази виконання
+
+- Код у `auth_examples/token_auth/index.js` і `index.html` містить усі зміни (перевірка підпису, нова UI-секція, ручний verify).
+- Артефакти `artifacts/user_creation.json` тощо свідчать, що login/refresh функціонал працює зі справжнім Auth0 tenant'ом; перевірка підпису потребує тільки доступу до `https://dev-qpb2xt3kxhpqx4fk.us.auth0.com/pem`.
+- У dev-контейнері мережеві виклики заблоковані, тому фактичне звернення до `/pem` показую на локальній машині (аналогічно до ЛР4). У README залишено всі команди, їх достатньо виконати у середовищі з Інтернетом.

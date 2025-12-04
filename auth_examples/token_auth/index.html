@@ -41,6 +41,14 @@
                 <pre id="token-dump">Login to see access_token / refresh_token data from Auth0.</pre>
             </section>
 
+            <section id="jwt-section">
+                <div class="token-header">
+                    <h2>JWT Signature</h2>
+                    <button id="verify-jwt-btn" type="button">Verify signature</button>
+                </div>
+                <pre id="jwt-dump">Login to verify token signature.</pre>
+            </section>
+
             <section id="status-section">
                 <h2>API status log</h2>
                 <pre id="status-log">Waiting for actions...</pre>
@@ -116,6 +124,7 @@
 
         #register-section,
         #token-section,
+        #jwt-section,
         #status-section {
             width: 100%;
             opacity: 0;
@@ -124,6 +133,7 @@
 
         #register-section.visible,
         #token-section.visible,
+        #jwt-section.visible,
         #status-section.visible {
             opacity: 1;
         }
@@ -205,6 +215,9 @@
         const statusSection = document.getElementById("status-section");
         const statusLog = document.getElementById("status-log");
         const refreshButton = document.getElementById("refresh-token-btn");
+        const jwtSection = document.getElementById("jwt-section");
+        const jwtDump = document.getElementById("jwt-dump");
+        const verifyJwtButton = document.getElementById("verify-jwt-btn");
 
         registerSection.classList.add('visible');
 
@@ -217,8 +230,16 @@
             statusSection.classList.add('visible');
         };
 
+        const updateJwtSection = (verification) => {
+            if (!verification) {
+                return;
+            }
+            jwtDump.textContent = JSON.stringify(verification, null, 2);
+            jwtSection.classList.add('visible');
+        };
+
         const renderSession = (data) => {
-            const { username, auth0Tokens } = data;
+            const { username, auth0Tokens, jwtVerification } = data;
             if (!username) return;
 
             const mainHolder = document.getElementById("main-holder");
@@ -235,6 +256,9 @@
                 tokenDump.textContent = JSON.stringify(auth0Tokens, null, 2);
                 tokenSection.classList.add('visible');
                 refreshButton.style.display = 'inline-flex';
+            }
+            if (jwtVerification) {
+                updateJwtSection(jwtVerification);
             }
         };
 
@@ -305,13 +329,37 @@
                             sessionStorage.setItem('session', JSON.stringify({
                                 ...current,
                                 auth0Tokens: data.auth0Tokens,
+                                jwtVerification: data.jwtVerification,
                             }));
                         } catch (e) {}
+                    }
+                    if (data.jwtVerification) {
+                        updateJwtSection(data.jwtVerification);
                     }
                     appendStatus('Refresh token request completed.');
                 })
                 .catch((error) => {
                     appendStatus(`Refresh failed: ${error?.response?.data?.error || 'Unknown'}`);
+                });
+        });
+
+        verifyJwtButton.addEventListener('click', () => {
+            axios.post('/api/verify')
+                .then(({ data }) => {
+                    updateJwtSection(data.jwtVerification);
+                    try {
+                        const current = JSON.parse(sessionStorage.getItem('session')) || {};
+                        sessionStorage.setItem('session', JSON.stringify({
+                            ...current,
+                            jwtVerification: data.jwtVerification,
+                        }));
+                    } catch (e) {}
+                    appendStatus('Manual JWT verification succeeded.');
+                })
+                .catch((error) => {
+                    const verification = error?.response?.data?.jwtVerification || { valid: false, error: error?.response?.data?.error };
+                    updateJwtSection(verification);
+                    appendStatus(`Manual verify failed: ${verification.error || 'Unknown'}`);
                 });
         });
     </script>

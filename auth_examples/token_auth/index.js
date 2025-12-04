@@ -6,6 +6,7 @@ const path = require('path');
 const port = 3000;
 const fs = require('fs');
 const axios = require('axios');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 app.use(bodyParser.json());
@@ -91,6 +92,7 @@ app.get('/', (req, res) => {
             username: req.session.username,
             logout: 'http://localhost:3000/logout',
             auth0Tokens: req.session.auth0Tokens || null,
+            jwtVerification: req.session.jwtVerification || null,
         })
     }
     res.sendFile(path.join(__dirname+'/index.html'));
@@ -111,6 +113,48 @@ const AUTH0_CONNECTION = process.env.AUTH0_CONNECTION || 'Username-Password-Auth
 const tokenUrl = `https://${AUTH0_DOMAIN}/oauth/token`;
 const userInfoUrl = `https://${AUTH0_DOMAIN}/userinfo`;
 const usersUrl = `https://${AUTH0_DOMAIN}/api/v2/users`;
+const pemUrl = `https://${AUTH0_DOMAIN}/pem`;
+
+let cachedPem;
+
+async function getPem() {
+    if (cachedPem) {
+        return cachedPem;
+    }
+
+    const response = await axios.get(pemUrl);
+    cachedPem = response.data;
+    return cachedPem;
+}
+
+async function verifyAccessToken(token) {
+    if (!token) {
+        return { valid: false, error: 'Token is missing' };
+    }
+
+    try {
+        const pem = await getPem();
+        const payload = jwt.verify(token, pem, {
+            algorithms: ['RS256'],
+            audience: AUTH0_AUDIENCE,
+            issuer: `https://${AUTH0_DOMAIN}/`,
+        });
+
+        const header = jwt.decode(token, { complete: true })?.header;
+        return {
+            valid: true,
+            header,
+            payload,
+            issued_at: payload.iat,
+            expires_at: payload.exp,
+        };
+    } catch (error) {
+        return {
+            valid: false,
+            error: error.message,
+        };
+    }
+}
 
 async function exchangePasswordForToken(username, password) {
     const payload = new URLSearchParams({
@@ -205,11 +249,13 @@ app.post('/api/login', async (req, res) => {
             scope: tokenResponse.scope,
             expires_at: Date.now() + tokenResponse.expires_in * 1000,
         };
+        req.session.jwtVerification = await verifyAccessToken(tokenResponse.access_token);
 
         return res.json({
             token: req.sessionId,
             username: req.session.username,
             auth0Tokens: req.session.auth0Tokens,
+            jwtVerification: req.session.jwtVerification,
         });
     } catch (error) {
         console.error('Auth0 login error', error.response?.data || error.message);
@@ -259,15 +305,29 @@ app.post('/api/refresh', async (req, res) => {
             expires_in: refreshed.expires_in,
             expires_at: Date.now() + refreshed.expires_in * 1000,
         };
+        req.session.jwtVerification = await verifyAccessToken(req.session.auth0Tokens.access_token);
 
         return res.json({
             refreshed: true,
             auth0Tokens: req.session.auth0Tokens,
+            jwtVerification: req.session.jwtVerification,
         });
     } catch (error) {
         console.error('Auth0 refresh error', error.response?.data || error.message);
         return res.status(401).json({ error: 'Failed to refresh token', details: error.response?.data });
     }
+});
+
+app.post('/api/verify', async (req, res) => {
+    const sessionTokens = req.session.auth0Tokens;
+    if (!sessionTokens?.access_token) {
+        return res.status(400).json({ error: 'No access token available for verification' });
+    }
+
+    const verification = await verifyAccessToken(sessionTokens.access_token);
+    req.session.jwtVerification = verification;
+
+    return res.status(verification.valid ? 200 : 400).json({ jwtVerification: verification });
 });
 
 app.listen(port, () => {
