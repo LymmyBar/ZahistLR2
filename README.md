@@ -193,6 +193,10 @@ bash scripts/change_password.sh lab.student+ropg@domain.com 'NewPassw0rd!2025'
 
 Результат лежить у `artifacts/password_change.json` і підтверджує успішний запит. Якщо потрібно повернути старий пароль, можна повторити команду з іншим значенням.
 
+### Детальні кроки додаткового завдання
+
+Для швидкої презентації бонусу я виніс інструкцію в `bonus_tasks/password_reset/README.md`. Там описано, як створити M2M клієнт `LR3 Management Client`, видати йому `read:users`/`update:users`, отримати токен і виконати `PATCH /api/v2/users/{id}` вручну (або через наш скрипт). Документ зручно відкривати на захисті, щоб не згадувати всі кроки з пам'яті.
+
 ## Підсумки по ЛР3
 
 - Налаштував Resource Owner Password Grant і отримав повний набір токенів (access + refresh).
