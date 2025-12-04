@@ -106,9 +106,11 @@ const AUTH0_CLIENT_ID = process.env.AUTH0_CLIENT_ID || 'I2sHGI0LvIApEjOMT0LZhFb7
 const AUTH0_CLIENT_SECRET = process.env.AUTH0_CLIENT_SECRET || 'Y6IRq8WpmGx7bLr-GGfzx1njQjxBZjphgfyQEFtyruyprB9mHzwsjFMh9qidN_dh';
 const AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE || 'https://dev-qpb2xt3kxhpqx4fk.us.auth0.com/api/v2/';
 const AUTH0_SCOPE = process.env.AUTH0_SCOPE || 'openid profile email offline_access';
+const AUTH0_CONNECTION = process.env.AUTH0_CONNECTION || 'Username-Password-Authentication';
 
 const tokenUrl = `https://${AUTH0_DOMAIN}/oauth/token`;
 const userInfoUrl = `https://${AUTH0_DOMAIN}/userinfo`;
+const usersUrl = `https://${AUTH0_DOMAIN}/api/v2/users`;
 
 async function exchangePasswordForToken(username, password) {
     const payload = new URLSearchParams({
@@ -136,6 +138,52 @@ async function fetchUserProfile(accessToken) {
     return response.data;
 }
 
+async function getManagementToken() {
+    const payload = new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: AUTH0_CLIENT_ID,
+        client_secret: AUTH0_CLIENT_SECRET,
+        audience: AUTH0_AUDIENCE,
+    });
+
+    const response = await axios.post(tokenUrl, payload.toString(), {
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    });
+
+    return response.data.access_token;
+}
+
+async function createAuth0User(email, password) {
+    const mgmtToken = await getManagementToken();
+
+    const response = await axios.post(usersUrl, {
+        email,
+        password,
+        connection: AUTH0_CONNECTION,
+        email_verified: false,
+        verify_email: false,
+    }, {
+        headers: { Authorization: `Bearer ${mgmtToken}` },
+    });
+
+    return response.data;
+}
+
+async function refreshAuth0Token(refreshToken) {
+    const payload = new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+        client_id: AUTH0_CLIENT_ID,
+        client_secret: AUTH0_CLIENT_SECRET,
+    });
+
+    const response = await axios.post(tokenUrl, payload.toString(), {
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    });
+
+    return response.data;
+}
+
 app.post('/api/login', async (req, res) => {
     const { login, password } = req.body;
 
@@ -155,6 +203,7 @@ app.post('/api/login', async (req, res) => {
             expires_in: tokenResponse.expires_in,
             token_type: tokenResponse.token_type,
             scope: tokenResponse.scope,
+            expires_at: Date.now() + tokenResponse.expires_in * 1000,
         };
 
         return res.json({
@@ -165,6 +214,59 @@ app.post('/api/login', async (req, res) => {
     } catch (error) {
         console.error('Auth0 login error', error.response?.data || error.message);
         return res.status(401).json({ error: 'Invalid credentials or Auth0 error' });
+    }
+});
+
+app.post('/api/register', async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+        return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    try {
+        const createdUser = await createAuth0User(email, password);
+        return res.status(201).json({
+            user_id: createdUser.user_id,
+            email: createdUser.email,
+            connection: createdUser.identities?.[0]?.connection || AUTH0_CONNECTION,
+        });
+    } catch (error) {
+        console.error('Auth0 register error', error.response?.data || error.message);
+        const status = error.response?.status || 500;
+        return res.status(status).json({ error: 'Failed to create user', details: error.response?.data });
+    }
+});
+
+app.post('/api/refresh', async (req, res) => {
+    const sessionTokens = req.session.auth0Tokens;
+    if (!sessionTokens || !sessionTokens.refresh_token) {
+        return res.status(400).json({ error: 'No refresh token available in session' });
+    }
+
+    const millisLeft = (sessionTokens.expires_at || 0) - Date.now();
+    if (millisLeft > 60_000 && !req.body?.force) {
+        return res.json({ skipped: true, expires_in_ms: millisLeft });
+    }
+
+    try {
+        const refreshed = await refreshAuth0Token(sessionTokens.refresh_token);
+        req.session.auth0Tokens = {
+            ...sessionTokens,
+            access_token: refreshed.access_token,
+            id_token: refreshed.id_token,
+            scope: refreshed.scope || sessionTokens.scope,
+            token_type: refreshed.token_type || sessionTokens.token_type,
+            expires_in: refreshed.expires_in,
+            expires_at: Date.now() + refreshed.expires_in * 1000,
+        };
+
+        return res.json({
+            refreshed: true,
+            auth0Tokens: req.session.auth0Tokens,
+        });
+    } catch (error) {
+        console.error('Auth0 refresh error', error.response?.data || error.message);
+        return res.status(401).json({ error: 'Failed to refresh token', details: error.response?.data });
     }
 });
 

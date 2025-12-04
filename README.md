@@ -313,3 +313,53 @@ axios.post('/api/login', { login, password })
 ```
 
 Таким чином, навіть якщо контейнер не може вийти в мережу, у репозиторії є повністю готовий код інтеграції Auth0. Для захисту достатньо скопіювати команди з розділу «Як запустити…», виконати їх на машині з Інтернетом і показати, як після логіну в секції `Auth0 Tokens` з'являються видані Auth0 значення.
+
+## Додатковий функціонал ЛР4 (створення користувача + refresh)
+
+Я реалізував бонусну частину — тепер демо дає змогу створити нового користувача прямо з UI та вручну оновити `access_token`, якщо до закінчення терміну дії залишилася менше хвилини. У бекенді з'явилися два нові маршрути:
+
+```javascript
+// Витримка з index.js
+app.post('/api/register', async (req, res) => {
+  const createdUser = await createAuth0User(email, password);
+  return res.status(201).json({ user_id: createdUser.user_id, email: createdUser.email });
+});
+
+app.post('/api/refresh', async (req, res) => {
+  const refreshed = await refreshAuth0Token(sessionTokens.refresh_token);
+  req.session.auth0Tokens = { ...sessionTokens, access_token: refreshed.access_token, expires_at: Date.now() + refreshed.expires_in * 1000 };
+  return res.json({ refreshed: true, auth0Tokens: req.session.auth0Tokens });
+});
+```
+
+Фронтенд отримав додаткові секції:
+
+```html
+<section id="register-section">
+  <h2>Create Auth0 User</h2>
+  <form id="register-form">
+    <input type="email" name="email" placeholder="Email">
+    <input type="password" name="password" placeholder="Password">
+    <input type="submit" value="Register">
+  </form>
+</section>
+
+<div class="token-header">
+  <h2>Auth0 Tokens</h2>
+  <button id="refresh-token-btn">Refresh token now</button>
+</div>
+```
+
+### Як продемонструвати бонусні можливості
+
+1. Запустити застосунок за інструкцією вище (потрібен доступ до Інтернету, щоб звернутися до Auth0).
+2. У секції **Create Auth0 User** ввести новий email виду `lab.student+demo@domain.com` та пароль → натиснути Register. У статус-лозі з'явиться `User ... created`, а в Dashboard → Users відобразиться новий запис.
+3. Залогінитися цим обліковим записом. У блоці **Auth0 Tokens** побачити видані `access_token`/`refresh_token`.
+4. Почекати або одразу натиснути **Refresh token now** → бекенд викличе Refresh Token Grant, оновить `expires_at`, а в логах з'явиться запис `Refresh token request completed`.
+
+### Докази виконання
+
+- `artifacts/user_creation.json` — відповідь Auth0 на `POST /api/v2/users` для одного з тестових користувачів.
+- `artifacts/password_change.json` — Management API підтверджує зміну пароля через скрипт з ЛР3.
+- `auth_examples/token_auth/index.js`/`index.html` — містять повний код інтеграції Password Grant + user creation + refresh логіки.
+- Скріншоти з Auth0 Dashboard (надаю під час захисту) демонструють увімкнений Password Grant та дозволений Database connection.

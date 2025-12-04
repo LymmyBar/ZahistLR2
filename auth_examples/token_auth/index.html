@@ -24,9 +24,26 @@
                 <input type="submit" value="Login" id="login-form-submit">
             </form>
 
+            <section id="register-section">
+                <h2>Create Auth0 User</h2>
+                <form id="register-form">
+                    <input type="email" name="email" id="register-email" class="login-form-field" placeholder="Email">
+                    <input type="password" name="password" id="register-password" class="login-form-field" placeholder="Password">
+                    <input type="submit" value="Register" id="register-submit">
+                </form>
+            </section>
+
             <section id="token-section">
-                <h2>Auth0 Tokens</h2>
+                <div class="token-header">
+                    <h2>Auth0 Tokens</h2>
+                    <button id="refresh-token-btn" type="button">Refresh token now</button>
+                </div>
                 <pre id="token-dump">Login to see access_token / refresh_token data from Auth0.</pre>
+            </section>
+
+            <section id="status-section">
+                <h2>API status log</h2>
+                <pre id="status-log">Waiting for actions...</pre>
             </section>
 
         </main>
@@ -97,14 +114,37 @@
             align-items: center;
         }
 
-        #token-section {
+        #register-section,
+        #token-section,
+        #status-section {
             width: 100%;
             opacity: 0;
             transition: opacity 0.3s ease-in-out;
         }
 
-        #token-section.visible {
+        #register-section.visible,
+        #token-section.visible,
+        #status-section.visible {
             opacity: 1;
+        }
+
+        #register-section form,
+        #token-section .token-header {
+            width: 100%;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        #refresh-token-btn {
+            display: none;
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            background: #238636;
+            color: #fff;
+            cursor: pointer;
         }
 
         #token-dump {
@@ -114,6 +154,16 @@
             border-radius: 6px;
             overflow-x: auto;
             max-height: 200px;
+            font-size: 12px;
+        }
+
+        #status-log {
+            background: #0d1117;
+            color: #7ee787;
+            padding: 12px;
+            border-radius: 6px;
+            max-height: 150px;
+            overflow-y: auto;
             font-size: 12px;
         }
 
@@ -144,47 +194,62 @@
     </style>
 
     <script>
-        const session = sessionStorage.getItem('session');
-
-        let token;
-
-        try {
-            token = JSON.parse(session).token;
-        } catch(e) {}
-
-        if (token) {
-            axios.get('/', {
-                headers: {
-                    Authorization: token
-                }
-            }).then((response) => {
-                const { username, auth0Tokens } = response.data;
-
-                if (username) {
-                    const mainHolder = document.getElementById("main-holder");
-                    const loginHeader = document.getElementById("login-header");
-
-                    loginForm.remove();
-                    loginErrorMsg.remove();
-                    loginHeader.remove();
-
-                    mainHolder.append(`Hello ${username}`);
-                    logoutLink.style.opacity = 1;
-                    if (auth0Tokens) {
-                        tokenDump.textContent = JSON.stringify(auth0Tokens, null, 2);
-                        tokenSection.classList.add('visible');
-                    }
-                }
-            });
-        }
-
-
         const loginForm = document.getElementById("login-form");
         const loginButton = document.getElementById("login-form-submit");
         const loginErrorMsg = document.getElementById("login-error-msg");
         const logoutLink =  document.getElementById("logout");
         const tokenSection = document.getElementById("token-section");
         const tokenDump = document.getElementById("token-dump");
+        const registerSection = document.getElementById("register-section");
+        const registerForm = document.getElementById("register-form");
+        const statusSection = document.getElementById("status-section");
+        const statusLog = document.getElementById("status-log");
+        const refreshButton = document.getElementById("refresh-token-btn");
+
+        registerSection.classList.add('visible');
+
+        const appendStatus = (text) => {
+            const now = new Date().toLocaleTimeString();
+            const entry = `[${now}] ${text}`;
+            statusLog.textContent = statusLog.textContent === 'Waiting for actions...'
+                ? entry
+                : `${statusLog.textContent}\n${entry}`;
+            statusSection.classList.add('visible');
+        };
+
+        const renderSession = (data) => {
+            const { username, auth0Tokens } = data;
+            if (!username) return;
+
+            const mainHolder = document.getElementById("main-holder");
+            const loginHeader = document.getElementById("login-header");
+
+            loginForm.remove();
+            loginErrorMsg.remove();
+            loginHeader.remove();
+
+            mainHolder.append(`Hello ${username}`);
+            logoutLink.style.opacity = 1;
+            registerSection.classList.add('visible');
+            if (auth0Tokens) {
+                tokenDump.textContent = JSON.stringify(auth0Tokens, null, 2);
+                tokenSection.classList.add('visible');
+                refreshButton.style.display = 'inline-flex';
+            }
+        };
+
+        const session = sessionStorage.getItem('session');
+
+        try {
+            const parsed = JSON.parse(session);
+            if (parsed?.token) {
+                axios.get('/', {
+                    headers: {
+                        Authorization: parsed.token
+                    }
+                }).then(({ data }) => renderSession(data));
+            }
+        } catch(e) {}
 
         logoutLink.addEventListener("click", (e) => {
             e.preventDefault();
@@ -206,12 +271,48 @@
                     password
                 }
             }).then((response) => {
-                const { username } =  response.data;
                 sessionStorage.setItem('session', JSON.stringify(response.data));
+                appendStatus('Login success, tokens cached in session.');
                 location.reload();
             }).catch((response) => {
                 loginErrorMsg.style.opacity = 1;
+                appendStatus(`Login failed: ${response?.response?.data?.error || 'Unknown error'}`);
             });
-        })
+        });
+
+        registerForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            const email = registerForm.email.value;
+            const password = registerForm.password.value;
+
+            axios.post('/api/register', { email, password })
+                .then(({ data }) => {
+                    appendStatus(`User ${data.email} created (id: ${data.user_id}).`);
+                    registerForm.reset();
+                })
+                .catch((error) => {
+                    appendStatus(`Register error: ${error?.response?.data?.error || 'Unknown'}`);
+                });
+        });
+
+        refreshButton.addEventListener('click', () => {
+            axios.post('/api/refresh', { force: true })
+                .then(({ data }) => {
+                    if (data.auth0Tokens) {
+                        tokenDump.textContent = JSON.stringify(data.auth0Tokens, null, 2);
+                        try {
+                            const current = JSON.parse(sessionStorage.getItem('session')) || {};
+                            sessionStorage.setItem('session', JSON.stringify({
+                                ...current,
+                                auth0Tokens: data.auth0Tokens,
+                            }));
+                        } catch (e) {}
+                    }
+                    appendStatus('Refresh token request completed.');
+                })
+                .catch((error) => {
+                    appendStatus(`Refresh failed: ${error?.response?.data?.error || 'Unknown'}`);
+                });
+        });
     </script>
 </html>
